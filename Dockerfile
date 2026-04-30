@@ -84,6 +84,12 @@ EXPOSE 8888
 COPY . /app
 
 # ------------------------------------------------------------------------------
+# Extract all compressed datasets and results
+# ------------------------------------------------------------------------------
+
+RUN bash extract_saved_results_tars.sh
+
+# ------------------------------------------------------------------------------
 # Build research tools
 # - Dafny fork
 # - Laurel placeholder finders

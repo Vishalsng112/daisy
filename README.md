@@ -37,6 +37,163 @@ PYTHONPATH=src python src/single_file_run.py myfile.dfy --method MyMethod --erro
 PYTHONPATH=src python src/single_file_run.py myfile.dfy --model cost_stub_almost_real
 ```
 
+## Example Files (Helper Assertion Repair)
+
+This pipeline repairs **helper `assert` statements** — not loop invariants. The extracted dataset (`dataset/dafny_assertion_dataset.tar.gz`) contains programs with specific helper assertions removed, along with pre-computed verifier errors. Each dataset entry has:
+
+- `program_without_assertion_group.dfy` — the broken program (assertions removed, invariants intact)
+- `verifier_output.txt` — pre-computed Dafny errors (use with `--error-file` to skip verification)
+- `original_program.dfy` — ground truth with correct assertions
+
+Extract the dataset first (if not already done):
+```sh
+mkdir -p dataset/extracted
+tar xzf dataset/dafny_assertion_dataset.tar.gz -C dataset/
+```
+
+Below are curated examples sorted by difficulty. All paths relative to project root.
+
+### 1. Lemma hint — `SENG2011_exam_ex4` (9 lines, 1 assert)
+
+Inductive lemma proving `n*(n-1) % 2 == 0`. Needs an algebraic expansion hint in the inductive step: `assert (n-1)*(n-2) == n*n - 3*n + 2`.
+
+```sh
+# Full pipeline (verify + localize + infer)
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/SENG2011_tmp_tmpgk5jq85q_exam_ex4_dfy/method_start_0_as_start_197_end_231/program_without_assertion_group.dfy
+
+# Skip verification using pre-computed errors
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/SENG2011_tmp_tmpgk5jq85q_exam_ex4_dfy/method_start_0_as_start_197_end_231/program_without_assertion_group.dfy \
+  --error-file dataset/dafny_assertion_dataset/SENG2011_tmp_tmpgk5jq85q_exam_ex4_dfy/method_start_0_as_start_197_end_231/verifier_output.txt
+```
+
+### 2. Sequence sum — `dafny-duck_p1` (16 lines, 2 asserts)
+
+Array sum via recursive `Sum` function. Needs two sequence-slicing hints: `assert xs[..i+1] == xs[..i] + [xs[i]]` inside the loop and `assert xs[..] == xs[..i]` after it.
+
+```sh
+# LLM localization
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/dafny-duck_tmp_tmplawbgxjo_p1_dfy/method_start_162_as_start_406_end_443_as_start_475_end_499/program_without_assertion_group.dfy \
+  --localization LLM
+
+# HYBRID localization
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/dafny-duck_tmp_tmplawbgxjo_p1_dfy/method_start_162_as_start_406_end_443_as_start_475_end_499/program_without_assertion_group.dfy \
+  --localization HYBRID
+
+# With pre-computed errors
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/dafny-duck_tmp_tmplawbgxjo_p1_dfy/method_start_162_as_start_406_end_443_as_start_475_end_499/program_without_assertion_group.dfy \
+  --error-file dataset/dafny_assertion_dataset/dafny-duck_tmp_tmplawbgxjo_p1_dfy/method_start_162_as_start_406_end_443_as_start_475_end_499/verifier_output.txt \
+  --localization LLM
+```
+
+### 3. Real sqrt test — `DafnyProjects_sqrt` (17 lines, 1 assert)
+
+Tests that `sqrt(4.0) == 2.0` using monotonic-square lemma. Needs `assert r == 2.0` after ruling out `r < 2.0`.
+
+```sh
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/DafnyProjects_tmp_tmp2acw_s4s_sqrt_dfy/method_start_94_as_start_228_end_243/program_without_assertion_group.dfy \
+  --localization LLM
+
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/DafnyProjects_tmp_tmp2acw_s4s_sqrt_dfy/method_start_94_as_start_228_end_243/program_without_assertion_group.dfy \
+  --localization LAUREL_BETTER
+```
+
+### 4. Set counting — `Clover_count_lessthan` (20 lines, 1 assert)
+
+Counts elements below a threshold in a set. Needs a set-comprehension decomposition hint: `assert (set i | i in grow' && i < threshold) == (set i | i in grow && i < threshold) + if i < threshold then {i} else {}`.
+
+```sh
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/Clover_count_lessthan_dfy/method_start_0_as_start_460_end_591/program_without_assertion_group.dfy \
+  --localization LLM --num-assertions 15
+
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/Clover_count_lessthan_dfy/method_start_0_as_start_460_end_591/program_without_assertion_group.dfy \
+  --localization HYBRID --num-assertions 15
+
+# With pre-computed errors + LAUREL
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/Clover_count_lessthan_dfy/method_start_0_as_start_460_end_591/program_without_assertion_group.dfy \
+  --error-file dataset/dafny_assertion_dataset/Clover_count_lessthan_dfy/method_start_0_as_start_460_end_591/verifier_output.txt \
+  --localization LAUREL
+```
+
+### 5. Multiset slice — `Clover_only_once` (21 lines, 1 assert)
+
+Checks if a key appears exactly once. Needs `assert a[..a.Length] == a[..]` after the loop to connect the invariant to the postcondition.
+
+```sh
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/Clover_only_once_dfy/method_start_0_as_start_460_end_489/program_without_assertion_group.dfy \
+  --localization LLM
+
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/Clover_only_once_dfy/method_start_0_as_start_460_end_489/program_without_assertion_group.dfy \
+  --localization LAUREL_BETTER
+```
+
+### 6. Divisibility lemma — `summer-school exercise01` (19 lines, 2 asserts)
+
+Predicate `divides(a, b)` with test assertions `assert divides(2, 6)` and `assert divides(3, 9)`.
+
+```sh
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/summer-school-2020_tmp_tmpn8nf7zf0_chapter02_solutions_exercise01_solution_dfy/method_start_153_as_start_257_end_277_as_start_324_end_344/program_without_assertion_group.dfy \
+  --localization LLM
+
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/summer-school-2020_tmp_tmpn8nf7zf0_chapter02_solutions_exercise01_solution_dfy/method_start_153_as_start_257_end_277_as_start_324_end_344/program_without_assertion_group.dfy \
+  --localization HYBRID --rounds 2
+```
+
+### 7. Array content — `dafny-exercise maxArray` (22 lines, 1 assert)
+
+Tests `maxArray` by asserting array contents after initialization: `assert arr[0] == -11 && arr[1] == 2 && arr[2] == 42 && arr[3] == -4`.
+
+```sh
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/dafny-exercise_tmp_tmpouftptir_maxArray_dfy/method_start_424_as_start_517_end_584/program_without_assertion_group.dfy \
+  --localization LLM
+
+PYTHONPATH=src python src/single_file_run.py \
+  dataset/dafny_assertion_dataset/dafny-exercise_tmp_tmpouftptir_maxArray_dfy/method_start_424_as_start_517_end_584/program_without_assertion_group.dfy \
+  --localization LAUREL --examples TFIDF
+```
+
+### Comparing with ground truth
+
+Each dataset entry's parent folder contains the verified original:
+
+```sh
+# View ground truth (with correct assertions)
+cat dataset/dafny_assertion_dataset/Clover_count_lessthan_dfy/original_program.dfy
+
+# Diff to see exactly which assertions were removed
+diff \
+  dataset/dafny_assertion_dataset/Clover_count_lessthan_dfy/method_start_0_as_start_460_end_591/program_without_assertion_group.dfy \
+  dataset/dafny_assertion_dataset/Clover_count_lessthan_dfy/original_program.dfy
+```
+
+### Docker one-liner
+
+```sh
+docker run --rm -it \
+  -v "$(pwd)/src:/app/src:delegated" \
+  -w /app \
+  dafny_research:latest bash -c \
+  'PYTHONPATH=src python src/single_file_run.py \
+    dataset/dafny_assertion_dataset/SENG2011_tmp_tmpgk5jq85q_exam_ex4_dfy/method_start_0_as_start_197_end_231/program_without_assertion_group.dfy \
+    --localization LLM'
+```
+
+---
+
 ## Available Models
 
 | Name | Provider | Model ID |

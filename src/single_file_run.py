@@ -11,7 +11,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from llm.llm_configurations import MODEL_REGISTRY
+from llm.extract_error_blocks import extract_error_blocks
+from dafny.dafny_runner import run_dafny_from_text, Status
 
 
 # ---------------------------------------------------------------------------
@@ -218,8 +223,6 @@ def run_initial_verification(
     * the program already verifies  → exit 0
     * the verifier crashes / OOMs   → exit 1
     """
-    from dafny.dafny_runner import run_dafny_from_text, Status
-
     if error_file is not None:
         # --error-file supplied: read pre-computed errors, skip verification
         try:
@@ -479,6 +482,37 @@ def build_run_options(args) -> "RunOptions":
     )
 
 
+def verify_single_combo(
+    localized_method_text: str,
+    combo: list[str],
+    placeholder: str,
+    file_info: "FileInfo",
+    method: "MethodInfo",
+    dafny_exec: Path,
+    temp_dir: Path,
+    cancel_event: threading.Event | None = None,
+) -> tuple[bool, str]:
+    """Verify one assertion combo. Returns (verified, fixed_method_text).
+
+    If cancel_event is set before Dafny runs, returns (False, "") early.
+    """
+    if cancel_event and cancel_event.is_set():
+        return (False, "")
+
+    method_fixed = localized_method_text
+    for assertion_text in combo:
+        method_fixed = method_fixed.replace(placeholder, assertion_text, 1)
+
+    _, fixed_file = file_info.substitute_method_with_text(method, method_fixed)
+
+    if cancel_event and cancel_event.is_set():
+        return (False, "")
+
+    status, _, _ = run_dafny_from_text(dafny_exec, fixed_file, temp_dir)
+    verified = (status == Status.VERIFIED)
+    return (verified, method_fixed)
+
+
 def run_inference_and_verify(
     localized_method_text: str,
     file_info: "FileInfo",
@@ -500,7 +534,6 @@ def run_inference_and_verify(
         zip_with_empty_indexed,
     )
     from llm.parse_raw_response import parse_raw_response
-    from dafny.dafny_runner import run_dafny_from_text, Status
 
     placeholder = "/*<Assertion is Missing Here>*/"
 
@@ -556,29 +589,34 @@ def run_inference_and_verify(
 
     combos, _indices = zip_with_empty_indexed(response_assertions)
 
+    cancel_event = threading.Event()
     total_tested = 0
     verified_count = 0
-    first_corrected_text: str | None = None
+    first_corrected_text = None
 
-    for combo in combos:
-        # Substitute placeholders with this combination's assertions
-        method_fixed = localized_method_text
-        for assertion_text in combo:
-            method_fixed = method_fixed.replace(placeholder, assertion_text, 1)
+    with ThreadPoolExecutor() as executor:
+        futures = {
+            executor.submit(
+                verify_single_combo,
+                localized_method_text, combo, placeholder,
+                file_info, method, dafny_exec, temp_dir, cancel_event,
+            ): combo
+            for combo in combos
+        }
 
-        # Splice fixed method into full file
-        _, fixed_file = file_info.substitute_method_with_text(method, method_fixed)
+        for future in as_completed(futures):
+            try:
+                verified, method_fixed = future.result()
+            except Exception as exc:
+                print(warning(f"Verification error: {exc}"))
+                continue
 
-        status, _stdout, _stderr = run_dafny_from_text(
-            dafny_exec, fixed_file, temp_dir,
-        )
-
-        total_tested += 1
-
-        if status == Status.VERIFIED:
-            verified_count += 1
-            if first_corrected_text is None:
-                first_corrected_text = method_fixed
+            total_tested += 1
+            if verified:
+                verified_count += 1
+                if first_corrected_text is None:
+                    first_corrected_text = method_fixed
+                    cancel_event.set()  # signal others to stop
 
     # --- Display results (Req 7.5, 7.6, 7.7) ---
     print(section_header("Verification"))
@@ -599,21 +637,6 @@ def run_inference_and_verify(
 # ---------------------------------------------------------------------------
 # Main — wires all stages together (3.7)
 # ---------------------------------------------------------------------------
-
-def _filter_errors(output: str) -> str:
-    """Return only error blocks from verifier output, stripping warnings."""
-    lines = output.splitlines()
-    filtered: list[str] = []
-    in_error = False
-    for line in lines:
-        if "Error" in line:
-            in_error = True
-        elif "Warning" in line:
-            in_error = False
-        if in_error:
-            filtered.append(line)
-    return "\n".join(filtered)
-
 
 def main() -> None:
     global _USE_COLOR
@@ -658,7 +681,7 @@ def main() -> None:
     # --- Display verification errors (Req 7.1) ---
     print(section_header("Verification"))
     print(f"Status: {status_str}")
-    filtered = _filter_errors(error_output)
+    filtered = extract_error_blocks(error_output)
     if filtered.strip():
         print("Errors:")
         for line in filtered.strip().splitlines():
