@@ -11,6 +11,11 @@ from src_new.daisy.assertion_inference.llm_strategy import (
     AssertionInferenceError,
     LLMAssertionStrategy,
 )
+
+from src_new.daisy.assertion_inference.llm_example_strategy import (
+    LLMExampleAssertionStrategy 
+)
+
 from src_new.daisy.assertion_inference.oracle_strategy import OracleAssertionStrategy
 
 __all__ = [

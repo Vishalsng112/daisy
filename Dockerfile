@@ -69,6 +69,7 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY src/requirements.txt ./src/requirements.txt
+COPY src_new ./src_new
 
 RUN python3 -m pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r ./src/requirements.txt \

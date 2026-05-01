@@ -16,6 +16,8 @@ from src_new.llm.llm_configurations import LLM
 from src_new.llm.retrieve_examples import (
     generate_example_model,
     retrieve_by_error_and_code,
+    retrieve_examples,
+    format_examples
 )
 
 
@@ -34,74 +36,6 @@ class LLMExamplePositionStrategy(LLMPositionStrategy):
         self.name = "LLM_EXAMPLE"
 
     # ------------------------------------------------------------------
-    # Example retrieval
-    # ------------------------------------------------------------------
-
-    def _retrieve_examples(
-        self,
-        method_text: str,
-        error_output: str,
-        prog_name: str | None = None,
-        group_name: str | None = None,
-    ) -> list[dict]:
-        """Retrieve similar examples from the dataset."""
-        cfg = self.config
-        if cfg.example_retrieval_type == ExampleStrategy.NONE or cfg.num_examples == 0:
-            return []
-
-        filtered_error = extract_error_blocks(error_output)
-        entries, model, device, tfidf_vec, tfidf_mat = generate_example_model()
-
-        results = retrieve_by_error_and_code(
-            new_error=filtered_error,
-            new_code=method_text,
-            entries=entries,
-            top_k=-1,
-            method=cfg.example_retrieval_type,
-            α=cfg.example_weight,
-            prog_original=prog_name,
-            group_original=group_name,
-            model=model,
-            device=device,
-            diferent_methods=1,
-            tfidf_vectorizer=tfidf_vec,
-            tfidf_matrix=tfidf_mat,
-        )
-
-        if cfg.example_retrieval_type == ExampleStrategy.RANDOM:
-            import random
-            random.shuffle(results)
-
-        return results[: cfg.num_examples]
-
-    # ------------------------------------------------------------------
-    # Build example section for the prompt
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _format_examples(examples: list[dict]) -> str:
-        """Format retrieved examples into a prompt section."""
-        if not examples:
-            return ""
-
-        parts = ["Consider these examples: \n"]
-        for r in examples:
-            filtered_error = extract_error_blocks(r["error_message"])
-            numbered_lines = "\n".join(
-                f"{line_id}: {line}"
-                for line_id, line in enumerate(
-                    r["method_without_assertion_group"].splitlines()
-                )
-            )
-            parts.append("=== EXAMPLE ===\n")
-            parts.append(f"Error:\n{filtered_error}\n")
-            parts.append(f"\nCODE:\n{numbered_lines}\n")
-            parts.append(f"OUTPUT:\n{r['oracle_pos']}\n")
-            parts.append("=== END ===\n")
-
-        return "".join(parts)
-
-    # ------------------------------------------------------------------
     # Override prompt construction to prepend examples
     # ------------------------------------------------------------------
 
@@ -111,10 +45,13 @@ class LLMExamplePositionStrategy(LLMPositionStrategy):
         prog_name = kwargs.get("prog_name")
         group_name = kwargs.get("group_name")
 
-        examples = self._retrieve_examples(
-            method_text, error_output, prog_name, group_name
-        )
-        example_section = self._format_examples(examples)
+        cfg = self.config
+        if cfg.example_retrieval_type == ExampleStrategy.NONE or cfg.num_examples == 0:
+            examples = []
+        else :
+            examples = retrieve_examples( cfg, method_text, error_output, prog_name, group_name)
+
+        example_section = format_examples(examples)
 
         return base_prompt + example_section
 

@@ -4,6 +4,10 @@ Infer helper assertions in Dafny code using LLM-powered assertion repair.
 
 Daisy takes a Dafny file that fails verification, predicts where helper assertions are needed, generates candidates via an LLM, and verifies them against the Dafny verifier — returning a corrected method if a fix is found.
 
+## Full cli command to pretify
+python -m src_new.cli /home/ricostynha/Desktop/daisy/dataset/extracted_test/dafny_assertion_dataset_test/Clover_count_lessthan_dfy/method_start_0_as_start_460_end_591/program_without_assertion_group.dfy --model without_api --localization LLM_EXAMPLE --assertion LLM_EXAMPLE --n-examples-pos 3 --n-examples-inf 3 --s-examples-pos RANDOM
+
+
 ## Quick Start
 
 ```sh

@@ -17,6 +17,7 @@ from src_new.config import (
     ASSERTION_PLACEHOLDER,
     BASE_PATH,
     DAFNY_EXEC,
+    ExampleStrategy,
     AssertionInfererConfig,
     PositionInfererConfig,
     VerificationConfig,
@@ -40,18 +41,25 @@ LOCALIZATION_CHOICES = [k for k in POSITION_REGISTRY if k != "ORACLE"] + ["NONE"
 ASSERTION_CHOICES = [k for k in ASSERTION_REGISTRY if k != "ORACLE"]
 VERIFICATION_CHOICES = list(VERIFICATION_REGISTRY.keys())
 
+EXAMPLE_STRATEGY = [ k.value for k in ExampleStrategy]
+
 CLI_RESULTS_DIR: Path = BASE_PATH / "results" / "cli_runs"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
-
+#   example_retrieval_type:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Dafny assertion-repair pipeline.")
     p.add_argument("file", help="Path to .dfy file.")
     p.add_argument("--localization", choices=LOCALIZATION_CHOICES, default="LLM")
+    p.add_argument("--assertion", choices=ASSERTION_CHOICES, default="LLM")
     p.add_argument("--model", default="openrouter-free")
     p.add_argument("--num-assertions", type=int, default=10)
+    p.add_argument("--n-examples-pos", type=int, default=0)
+    p.add_argument("--n-examples-inf", type=int, default=0)
+    p.add_argument("--s-examples-pos", choices=EXAMPLE_STRATEGY, default="NONE")
+    p.add_argument("--s-examples-inf", choices=EXAMPLE_STRATEGY, default="NONE")
     p.add_argument("--rounds", type=int, default=1)
     p.add_argument("--no-color", action="store_true", default=False)
     return p
@@ -233,6 +241,18 @@ def create_position_inferer(strategy: str, llm, pos_config: PositionInfererConfi
     return cls(config=pos_config, cache_dir=cache_dir)
 
 
+def create_assertion_inferer(strategy: str, llm, assertion_config: AssertionInfererConfig, cache_dir: Path | None = None):
+    """Create a assertion inferer from the registry.
+    """
+    cls = ASSERTION_REGISTRY.get(strategy)
+    if cls is None:
+        return None
+
+    if strategy in ("LLM", "LLM_EXAMPLE"):
+        return cls(llm=llm, config=assertion_config, cache_dir=cache_dir)
+
+    return None
+
 # ---------------------------------------------------------------------------
 # Display helpers
 # ---------------------------------------------------------------------------
@@ -278,7 +298,10 @@ def main(argv: list[str] | None = None) -> None:
     print(f"  File:          {args.file}")
     print(f"  Model:         {args.model} ({model_info.model_id})")
     print(f"  Localization:  {args.localization}")
+    print(f"  Assert Infer:  {args.assertion}")
     print(f"  Assertions:    {args.num_assertions} per position, {args.rounds} round(s)")
+    print(f"  N Example (Pos, Inf): ({args.n_examples_pos}, {args.n_examples_inf})")
+
     print()
 
     try:
@@ -324,7 +347,12 @@ def main(argv: list[str] | None = None) -> None:
             positions: list[int] = []
         else:
             pos_inferer = create_position_inferer(
-                args.localization, llm, PositionInfererConfig(), cache_dir=run_dir)
+                args.localization, llm, 
+                    PositionInfererConfig(
+                        num_examples=args.n_examples_pos,
+                        example_retrieval_type=args.s_examples_pos
+                    ), 
+                    cache_dir=run_dir)
             if pos_inferer is None:
                 _die(f"Error: unsupported localization '{args.localization}'.")
             extra = {}
@@ -344,13 +372,20 @@ def main(argv: list[str] | None = None) -> None:
 
         # ── Assertion inference ──
         print(_sec("Assertion Inference"))
+        print(f"  Strategy: {args.assertion}")
 
-        assert_cls = ASSERTION_REGISTRY["LLM"]
-        assert_inferer = assert_cls(
-            llm=llm, cache_dir=run_dir,
-            config=AssertionInfererConfig(
-                num_assertions_to_test=args.num_assertions, num_rounds=args.rounds),
-        )
+
+        assert_inferer = create_assertion_inferer(args.assertion, llm, 
+                                                AssertionInfererConfig(
+                                                    num_assertions_to_test=args.num_assertions, 
+                                                    num_rounds=args.rounds,
+                                                    num_examples=args.n_examples_inf,
+                                                    example_retrieval_type=args.s_examples_inf
+                                                ), 
+                                                cache_dir = run_dir)
+        if assert_inferer is None:
+            _die(f"Error: unsupported assertion '{args.assertion}'.")
+
         candidates = assert_inferer.infer_assertions(localized_text, error_output)
 
         _display_candidates(candidates)
