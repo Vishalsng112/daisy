@@ -17,12 +17,19 @@ from src_new.cli import (
     validate_model,
     insert_placeholders,
     create_position_inferer,
+    create_assertion_inferer,
     _parse_dafny_status,
     LOCALIZATION_CHOICES,
 )
 from src_new.config import (
     ASSERTION_PLACEHOLDER,
     PositionInfererConfig,
+    AssertionInfererConfig,
+)
+from src_new.llm.llm_configurations import (
+    MODEL_REGISTRY,
+    LLM_COST_STUB_RESPONSE_IS_PROMPT,
+    LLM_EMPTY_RESPONSE_STUB,
 )
 
 
@@ -192,6 +199,34 @@ class TestCreatePositionInferer:
 
 
 # ---------------------------------------------------------------------------
+# 6. create_assertion_inferer: each strategy → correct class
+# ---------------------------------------------------------------------------
+
+class TestCreateAssertionInferer:
+    """Req 8.3, 8.9: correct inferer class, cache_dir=None."""
+
+    def setup_method(self):
+        self.llm = MagicMock()
+        self.cfg = AssertionInfererConfig()
+
+    def test_llm_returns_correct_type(self):
+        from src_new.daisy.assertion_inference import LLMAssertionStrategy
+        result = create_assertion_inferer("LLM", self.llm, self.cfg)
+        assert isinstance(result, LLMAssertionStrategy)
+        assert result.cache_dir is None
+
+    def test_llm_example_returns_correct_type(self):
+        from src_new.daisy.assertion_inference import LLMExampleAssertionStrategy
+        result = create_assertion_inferer("LLM_EXAMPLE", self.llm, self.cfg)
+        assert isinstance(result, LLMExampleAssertionStrategy)
+        assert result.cache_dir is None
+
+    def test_none_returns_none(self):
+        result = create_assertion_inferer("NONE", self.llm, self.cfg)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
 # 6. _parse_dafny_status: various Dafny outputs → correct status strings
 # ---------------------------------------------------------------------------
 
@@ -286,8 +321,6 @@ class TestMainFullPipelineVerified:
 
     @patch("src_new.cli.shutil.rmtree")
     @patch("src_new.daisy.verification.ParallelComboVerification")
-    @patch("src_new.daisy.assertion_inference.LLMAssertionStrategy")
-    @patch("src_new.cli.create_position_inferer")
     @patch("src_new.cli.run_initial_verification")
     @patch("src_new.cli.extract_methods")
     @patch("src_new.cli.create_llm")
@@ -296,8 +329,6 @@ class TestMainFullPipelineVerified:
         mock_create_llm,
         mock_extract,
         mock_init_verif,
-        mock_create_pos,
-        mock_assert_cls,
         mock_verifier_cls,
         mock_rmtree,
         tmp_path,
@@ -305,7 +336,10 @@ class TestMainFullPipelineVerified:
         dfy = tmp_path / "test.dfy"
         dfy.write_text("method M() {\n  var x := 1;\n}")
 
-        mock_create_llm.return_value = MagicMock()
+        mock_create_llm.return_value = LLM_COST_STUB_RESPONSE_IS_PROMPT(
+            "test",
+            MODEL_REGISTRY["cost_stub_almost_real"],
+        )
 
         # extract_methods returns a FileInfo with one method
         mock_method = MagicMock()
@@ -321,30 +355,24 @@ class TestMainFullPipelineVerified:
         # position inferer → returns positions
         mock_pos_inferer = MagicMock()
         mock_pos_inferer.infer_positions.return_value = [1]
-        mock_create_pos.return_value = mock_pos_inferer
+        with patch("src_new.cli.create_position_inferer", return_value=mock_pos_inferer):
+            # verifier → verified
+            from src_new.daisy.verification.base import VerificationResult
+            mock_verifier = MagicMock()
+            mock_verifier.verify_assertions.return_value = VerificationResult(
+                verified=True,
+                total_tested=1,
+                verified_count=1,
+                corrected_method_text="method M() {\n  var x := 1;\n  assert x > 0;\n}",
+                corrected_file_text="method M() {\n  var x := 1;\n  assert x > 0;\n}",
+            )
+            mock_verifier_cls.return_value = mock_verifier
 
-        # assertion inferer → returns candidates
-        mock_assert_inst = MagicMock()
-        mock_assert_inst.infer_assertions.return_value = [["assert x > 0;"]]
-        mock_assert_cls.return_value = mock_assert_inst
+            with pytest.raises(SystemExit) as exc_info:
+                from src_new.cli import main
+                main([str(dfy), "--model", "claude-opus-4.5", "--localization", "LLM"])
 
-        # verifier → verified
-        from src_new.daisy.verification.base import VerificationResult
-        mock_verifier = MagicMock()
-        mock_verifier.verify_assertions.return_value = VerificationResult(
-            verified=True,
-            total_tested=1,
-            verified_count=1,
-            corrected_method_text="method M() {\n  var x := 1;\n  assert x > 0;\n}",
-            corrected_file_text="method M() {\n  var x := 1;\n  assert x > 0;\n}",
-        )
-        mock_verifier_cls.return_value = mock_verifier
-
-        with pytest.raises(SystemExit) as exc_info:
-            from src_new.cli import main
-            main([str(dfy), "--model", "claude-opus-4.5", "--localization", "LLM"])
-
-        assert exc_info.value.code == 0
+            assert exc_info.value.code == 0
 
 
 class TestMainFullPipelineNoFix:
@@ -352,7 +380,6 @@ class TestMainFullPipelineNoFix:
 
     @patch("src_new.cli.shutil.rmtree")
     @patch("src_new.daisy.verification.ParallelComboVerification")
-    @patch("src_new.daisy.assertion_inference.LLMAssertionStrategy")
     @patch("src_new.cli.create_position_inferer")
     @patch("src_new.cli.run_initial_verification")
     @patch("src_new.cli.extract_methods")
@@ -363,7 +390,6 @@ class TestMainFullPipelineNoFix:
         mock_extract,
         mock_init_verif,
         mock_create_pos,
-        mock_assert_cls,
         mock_verifier_cls,
         mock_rmtree,
         tmp_path,
@@ -371,7 +397,10 @@ class TestMainFullPipelineNoFix:
         dfy = tmp_path / "test.dfy"
         dfy.write_text("method M() {\n  var x := 1;\n}")
 
-        mock_create_llm.return_value = MagicMock()
+        mock_create_llm.return_value = LLM_EMPTY_RESPONSE_STUB(
+            "test",
+            MODEL_REGISTRY["cost_stub_almost_real"],
+        )
 
         mock_method = MagicMock()
         mock_method.method_name = "M"
@@ -386,88 +415,8 @@ class TestMainFullPipelineNoFix:
         mock_pos_inferer.infer_positions.return_value = [1]
         mock_create_pos.return_value = mock_pos_inferer
 
-        mock_assert_inst = MagicMock()
-        mock_assert_inst.infer_assertions.return_value = [["assert false;"]]
-        mock_assert_cls.return_value = mock_assert_inst
-
-        from src_new.daisy.verification.base import VerificationResult
-        mock_verifier = MagicMock()
-        mock_verifier.verify_assertions.return_value = VerificationResult(
-            verified=False,
-            total_tested=1,
-            verified_count=0,
-            corrected_method_text=None,
-            corrected_file_text=None,
-        )
-        mock_verifier_cls.return_value = mock_verifier
-
         with pytest.raises(SystemExit) as exc_info:
             from src_new.cli import main
             main([str(dfy), "--model", "claude-opus-4.5", "--localization", "LLM"])
 
         assert exc_info.value.code == 1
-
-
-# ---------------------------------------------------------------------------
-# 8. All inferers constructed with cache_dir=None
-# ---------------------------------------------------------------------------
-
-class TestCacheDirNone:
-    """Req 8.9: CLI mode → all inferers use cache_dir=None."""
-
-    @patch("src_new.cli.shutil.rmtree")
-    @patch("src_new.daisy.verification.ParallelComboVerification")
-    @patch("src_new.daisy.assertion_inference.LLMAssertionStrategy")
-    @patch("src_new.cli.create_position_inferer")
-    @patch("src_new.cli.run_initial_verification")
-    @patch("src_new.cli.extract_methods")
-    @patch("src_new.cli.create_llm")
-    def test_assertion_inferer_cache_dir_none(
-        self,
-        mock_create_llm,
-        mock_extract,
-        mock_init_verif,
-        mock_create_pos,
-        mock_assert_cls,
-        mock_verifier_cls,
-        mock_rmtree,
-        tmp_path,
-    ):
-        dfy = tmp_path / "test.dfy"
-        dfy.write_text("method M() {\n  var x := 1;\n}")
-
-        mock_create_llm.return_value = MagicMock()
-
-        mock_method = MagicMock()
-        mock_method.method_name = "M"
-        mock_method.segment_str = "method M() {\n  var x := 1;\n}"
-        mock_file_info = MagicMock()
-        mock_file_info.methods = [mock_method]
-        mock_extract.return_value = mock_file_info
-
-        mock_init_verif.return_value = ("NOT_VERIFIED", "error\n")
-
-        mock_pos_inferer = MagicMock()
-        mock_pos_inferer.infer_positions.return_value = [1]
-        mock_create_pos.return_value = mock_pos_inferer
-
-        mock_assert_inst = MagicMock()
-        mock_assert_inst.infer_assertions.return_value = [["assert true;"]]
-        mock_assert_cls.return_value = mock_assert_inst
-
-        from src_new.daisy.verification.base import VerificationResult
-        mock_verifier = MagicMock()
-        mock_verifier.verify_assertions.return_value = VerificationResult(
-            verified=True, total_tested=1, verified_count=1,
-            corrected_method_text="fixed", corrected_file_text="fixed",
-        )
-        mock_verifier_cls.return_value = mock_verifier
-
-        with pytest.raises(SystemExit):
-            from src_new.cli import main
-            main([str(dfy), "--model", "claude-opus-4.5"])
-
-        # LLMAssertionStrategy called with cache_dir set to a Path (run cache dir)
-        _, kwargs = mock_assert_cls.call_args
-        assert kwargs["cache_dir"] is not None
-        assert isinstance(kwargs["cache_dir"], Path)

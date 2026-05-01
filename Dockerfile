@@ -81,14 +81,8 @@ EXPOSE 8888
 # ------------------------------------------------------------------------------
 # Project source code
 # ------------------------------------------------------------------------------
-    
+
 COPY . /app
-
-# ------------------------------------------------------------------------------
-# Extract all compressed datasets and results
-# ------------------------------------------------------------------------------
-
-RUN bash extract_saved_results_tars.sh
 
 # ------------------------------------------------------------------------------
 # Build research tools
@@ -109,7 +103,8 @@ RUN cd external/dafny_laurel_repair/laurel/placeholder_finder_better \
 # ------------------------------------------------------------------------------
 
 RUN useradd --create-home researcher
-RUN chown -R researcher:researcher /app
+RUN mkdir -p /app/temp  /app/images \
+    && chown -R researcher:researcher /app/src /app/src_new /app/dataset /app/results /app/temp
 
 USER researcher
 ENV HOME=/home/researcher

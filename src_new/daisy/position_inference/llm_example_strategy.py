@@ -35,6 +35,10 @@ class LLMExamplePositionStrategy(LLMPositionStrategy):
         super().__init__(llm=llm, config=config, cache_dir=cache_dir, **kwargs)
         self.name = "LLM_EXAMPLE"
 
+    @staticmethod
+    def _format_examples(examples: list[dict]) -> str:
+        return format_examples(examples)
+
     # ------------------------------------------------------------------
     # Override prompt construction to prepend examples
     # ------------------------------------------------------------------
@@ -51,7 +55,7 @@ class LLMExamplePositionStrategy(LLMPositionStrategy):
         else :
             examples = retrieve_examples( cfg, method_text, error_output, prog_name, group_name)
 
-        example_section = format_examples(examples)
+        example_section = self._format_examples(examples)
 
         return base_prompt + example_section
 

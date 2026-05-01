@@ -83,6 +83,9 @@ docker run --rm -it \
 docker run --rm -it \
   -p 8888:8888 \
   -v "$(pwd)/src_new:/app/src_new:delegated" \
+  -v "$(pwd)/results:/app/results:delegated" \
+  -v "$(pwd)/dataset:/app/dataset:delegated" \
+  -v "$(pwd)/tmp:/app/tmp:delegated" \
   -e OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
   -w /app \
   dafny_research:latest bash

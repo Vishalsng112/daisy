@@ -3,6 +3,22 @@
 .gitignore
 .gitmodules
 
+# Keep the compressed archives, not the expanded data/results trees.
+dataset/*
+!dataset/*.tar.gz
+results/*
+!results/*.tar.gz
+
+# Generated or local-only directories that should never enter the image.
+dataset/extracted/
+dataset/extracted_test/
+temp/
+.kiro/
+.hypothesis/
+**/.pytest_cache/
+**/__pycache__/
+**/*.pyc
+
 # Optional: editor / OS junk
 __pycache__
 *.pyc

@@ -1,3 +1,15 @@
+# TODO AMANHA
+- Voltar a colocar exemplo a funcionar completamnete cli (testar todas as configuracoes).
+
+- Ver se esta a funcioar a pipeline completa ponta a ponta 
+
+- [ NO need Restruturacao maio o file group method group etc acho que nao trazem muito valor em vez de ter essas abstracoes pareceme mais facil apenas ler o dataset em si e pronto (Mas discutir este ponto com o AI talvevez ate faca muito sentido)]
+
+
+- PROOF PULSE: Tenho mesmo que enviar email ao arron sobre os assigments e esses problemas que estou a ter
+
+
+
 # Daisy
 
 Infer helper assertions in Dafny code using LLM-powered assertion repair.

@@ -48,7 +48,7 @@ class OpenRouter_LLM(LLM):
 
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
-            logger.warning("NO OPENROUTER API key provided - running in mock mode")
+            raise ValueError("NO OPENROUTER_API_KEY, set it")
             self.api_key = None
             return
 

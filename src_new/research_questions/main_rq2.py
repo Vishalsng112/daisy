@@ -22,7 +22,7 @@ from src_new.config import (
     LocStrategy,
 )
 from src_new.llm.llm_create import create_llm
-from src_new.research_questions.main_rq1 import run_strategy
+from src_new.research_questions.pipeline import run_strategy
 from src_new.utils.dataset_class import Dataset
 
 

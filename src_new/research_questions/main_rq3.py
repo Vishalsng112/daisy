@@ -22,7 +22,7 @@ from src_new.config import (
     LocStrategy,
 )
 from src_new.llm.llm_create import create_llm
-from src_new.research_questions.main_rq1 import run_strategy
+from src_new.research_questions.pipeline import run_strategy
 from src_new.utils.dataset_class import Dataset
 
 
@@ -57,6 +57,7 @@ def main() -> None:
     print("\n--- RANDOM ---")
     run_strategy(
         llm, loc, groups, results_dir, dataset_path,
+        assertion_strategy="LLM_EXAMPLE",
         example_type=ExampleStrategy.RANDOM,
         num_examples=3,
     )
@@ -65,6 +66,7 @@ def main() -> None:
     print("\n--- EMBEDDED ---")
     run_strategy(
         llm, loc, groups, results_dir, dataset_path,
+        assertion_strategy="LLM_EXAMPLE",
         example_type=ExampleStrategy.EMBEDDED,
         num_examples=3,
     )
@@ -73,6 +75,7 @@ def main() -> None:
     print("\n--- TFIDF ---")
     run_strategy(
         llm, loc, groups, results_dir, dataset_path,
+        assertion_strategy="LLM_EXAMPLE",
         example_type=ExampleStrategy.TFIDF,
         num_examples=3,
     )
@@ -82,6 +85,7 @@ def main() -> None:
         print(f"\n--- DYNAMIC alpha={weight} ---")
         run_strategy(
             llm, loc, groups, results_dir, dataset_path,
+            assertion_strategy="LLM_EXAMPLE",
             example_type=ExampleStrategy.DYNAMIC,
             num_examples=3,
             example_weight=weight,

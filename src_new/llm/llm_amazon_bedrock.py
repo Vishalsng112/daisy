@@ -22,13 +22,13 @@ class AmazonBedrock_LLM(LLM):
         api_key = os.getenv("AWS_BEARER_TOKEN_BEDROCK")
         if not api_key:
             api_key = "NO_KEY"
+            raise ValueError("NO AWS_BEARER_TOKEN_BEDROCK, set it")
         else:
             print("BEDROCK KEY PROVIDED")
 
         region = os.getenv("AWS_DEFAULT_REGION")
         if not region:
-            api_region = "NO_REGION"
-            print("NO BEDROCK API_DEFAULT_REGION provided, us-east-2 tends to be the better one")
+            raise ValueError("No AWS_DEFAULT_REGION, set it, exampe us-east-2 tends to work well")
 
         if api_key == "NO_KEY":
             print("NO BEDROCK API key provided — running in mock mode")
