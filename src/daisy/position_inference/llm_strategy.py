@@ -48,6 +48,10 @@ class LLMPositionStrategy(PositionInferer):
 
         prog_name = kwargs.get("prog_name")
         group_name = kwargs.get("group_name")
+        timings = kwargs.get("timings")
+        # measure example retrieval time if timings dict provided
+        import time
+        start_examples = time.time() if timings is not None else None
         examples = retrieve_examples(
             self.config,
             method_text,
@@ -55,6 +59,9 @@ class LLMPositionStrategy(PositionInferer):
             prog_name,
             group_name,
         )
+        if timings is not None and start_examples is not None:
+            timings.setdefault("position", {}).setdefault("examples_time", 0.0)
+            timings["position"]["examples_time"] += time.time() - start_examples
         if not examples:
             return prompt
 
@@ -87,7 +94,14 @@ class LLMPositionStrategy(PositionInferer):
     def _do_infer(self, method_text: str, error_output: str, **kwargs: Any) -> list[int]:
         prompt = self._build_prompt(method_text, error_output, **kwargs)
         self.llm.reset_chat_history()
+        # time the LLM round-trip if timings dict is provided
+        import time
+        timings = kwargs.get("timings")
+        start_llm = time.time() if timings is not None else None
         raw_response = self.llm.get_response(prompt)
+        if timings is not None and start_llm is not None:
+            timings.setdefault("position", {}).setdefault("llm_time", 0.0)
+            timings["position"]["llm_time"] += time.time() - start_llm
 
         try:
             parsed = parse_raw_response(raw_response)

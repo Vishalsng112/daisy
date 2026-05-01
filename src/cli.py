@@ -292,6 +292,8 @@ def main(argv: list[str] | None = None) -> None:
 
     # Create run cache dir (clean previous runs for same file+model)
     run_dir = _create_run_cache_dir(args.file, args.model)
+    # timings collects durations (seconds) for pipeline phases and sub-steps
+    timings: dict = {}
 
     # ── Banner ──
     print(_hdr("═══ Dafny Assertion Repair ═══"))
@@ -358,7 +360,11 @@ def main(argv: list[str] | None = None) -> None:
             extra = {}
             if args.localization in ("LAUREL", "LAUREL_BETTER", "HYBRID"):
                 extra = {"method_name": method.method_name.split(".")[-1], "program_text": code}
-            positions = pos_inferer.infer_positions(method_text, error_output, **extra)
+            # measure position inference time and pass timings dict for sub-measures
+            import time
+            t0 = time.time()
+            positions = pos_inferer.infer_positions(method_text, error_output, timings=timings, **extra)
+            timings.setdefault("position", {})["total_time"] = time.time() - t0
             localized_text = insert_placeholders(method_text, positions, placeholder)
 
         print(f"  Predicted lines: {positions}")
@@ -386,7 +392,11 @@ def main(argv: list[str] | None = None) -> None:
         if assert_inferer is None:
             _die(f"Error: unsupported assertion '{args.assertion}'.")
 
-        candidates = assert_inferer.infer_assertions(localized_text, error_output)
+        # measure assertion inference time and pass timings dict for sub-measures
+        import time
+        t0 = time.time()
+        candidates = assert_inferer.infer_assertions(localized_text, error_output, timings=timings)
+        timings.setdefault("assertion", {})["total_time"] = time.time() - t0
 
         _display_candidates(candidates)
         print()
@@ -398,9 +408,16 @@ def main(argv: list[str] | None = None) -> None:
         print(_sec("Verification"))
 
         verif_cls = VERIFICATION_REGISTRY["PARALLEL_COMBO"]
-        verifier = verif_cls(config=VerificationConfig())
+        # CLI always runs parallel verification and stops on success per user preference
+        verif_cfg = VerificationConfig()
+        verif_cfg.parallel = True
+        verif_cfg.stop_on_success = True
+        verifier = verif_cls(config=verif_cfg)
         full_file = code.replace(method_text, localized_text, 1)
+        import time
+        t0 = time.time()
         result = verifier.verify_assertions(full_file, localized_text, candidates)
+        timings.setdefault("verification", {})["total_time"] = time.time() - t0
 
         if result.verified:
             print(_ok(f"  Tested {result.total_tested} combinations, "
@@ -413,6 +430,13 @@ def main(argv: list[str] | None = None) -> None:
             if result.corrected_file_text:
                 _save_artifact(run_dir, "corrected_file.dfy", result.corrected_file_text)
 
+            # Save timings
+            try:
+                import json as _json
+                _save_artifact(run_dir, "timings.json", _json.dumps(timings, indent=2))
+            except Exception:
+                pass
+
             print()
             print(_dim(f"Full artifacts saved at: {run_dir}"))
             sys.exit(0)
@@ -420,6 +444,12 @@ def main(argv: list[str] | None = None) -> None:
             print(f"  Tested {result.total_tested} combinations, 0 verified")
             print()
             print(_dim(f"Full artifacts saved at: {run_dir}"))
+            # Save timings even on failure
+            try:
+                import json as _json
+                _save_artifact(run_dir, "timings.json", _json.dumps(timings, indent=2))
+            except Exception:
+                pass
             _die("No fix found.")
 
     finally:

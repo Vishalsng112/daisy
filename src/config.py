@@ -207,6 +207,7 @@ class VerificationConfig:
     temp_dir: Path = TEMP_FOLDER
     skip_verification: bool = False
     parallel: bool = True
+    stop_on_success: bool = True
     verifier_time_limit: int = VERIFIER_TIME_LIMIT
     verifier_max_memory: int = VERIFIER_MAX_MEMORY
     placeholder_text: str = ASSERTION_PLACEHOLDER

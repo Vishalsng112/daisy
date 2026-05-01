@@ -110,32 +110,50 @@ class ParallelComboVerification(VerificationStrategy):
         first_corrected_file: str | None = None
         lock = threading.Lock()
 
-        with ThreadPoolExecutor() as executor:
-            futures = {
-                executor.submit(
-                    self._verify_single_combo,
-                    full_file_text,
-                    method_text_with_placeholders,
-                    combo,
-                    cancel_event,
-                ): combo
-                for combo in combos
-            }
+        # If parallel is enabled, use ThreadPoolExecutor. Otherwise run sequentially.
+        if self.config.parallel:
+            with ThreadPoolExecutor() as executor:
+                futures = {
+                    executor.submit(
+                        self._verify_single_combo,
+                        full_file_text,
+                        method_text_with_placeholders,
+                        combo,
+                        cancel_event,
+                    ): combo
+                    for combo in combos
+                }
 
-            for future in as_completed(futures):
-                try:
-                    verified, method_fixed, file_fixed = future.result()
-                except Exception:
-                    continue
+                for future in as_completed(futures):
+                    try:
+                        verified, method_fixed, file_fixed = future.result()
+                    except Exception:
+                        continue
 
-                with lock:
-                    total_tested += 1
-                    if verified:
-                        verified_count += 1
-                        if first_corrected_method is None:
-                            first_corrected_method = method_fixed
-                            first_corrected_file = file_fixed
-                            cancel_event.set()
+                    with lock:
+                        total_tested += 1
+                        if verified:
+                            verified_count += 1
+                            if first_corrected_method is None:
+                                first_corrected_method = method_fixed
+                                first_corrected_file = file_fixed
+                                # Only cancel if configured to stop on success
+                                if getattr(self.config, "stop_on_success", True):
+                                    cancel_event.set()
+        else:
+            # Sequential execution — iterate combos in order and stop early if configured
+            for combo in combos:
+                verified, method_fixed, file_fixed = self._verify_single_combo(
+                    full_file_text, method_text_with_placeholders, combo, cancel_event
+                )
+                total_tested += 1
+                if verified:
+                    verified_count += 1
+                    if first_corrected_method is None:
+                        first_corrected_method = method_fixed
+                        first_corrected_file = file_fixed
+                        if getattr(self.config, "stop_on_success", True):
+                            break
 
         return VerificationResult(
             verified=first_corrected_method is not None,

@@ -76,6 +76,10 @@ class LLMAssertionStrategy(AssertionInferer):
             retrieve_by_error_and_code,
         )
 
+        timings = kwargs.get("timings")
+        import time
+        start_examples = time.time() if timings is not None else None
+
         error_txt_filter = extract_error_blocks(error_output)
 
         prog_name = kwargs.get("prog_name", "")
@@ -101,6 +105,10 @@ class LLMAssertionStrategy(AssertionInferer):
         if self.config.example_retrieval_type == ExampleStrategy.RANDOM:
             import random
             random.shuffle(results)
+
+        if timings is not None and start_examples is not None:
+            timings.setdefault("assertion", {}).setdefault("examples_time", 0.0)
+            timings["assertion"]["examples_time"] += time.time() - start_examples
 
         example_prompt = "Consider these examples: \n"
         for rank, r in enumerate(results, 1):
@@ -155,7 +163,14 @@ class LLMAssertionStrategy(AssertionInferer):
                 method_text_with_placeholders, error_output, **kwargs
             )
             self.llm.reset_chat_history()
+            # time LLM call per round
+            import time
+            timings = kwargs.get("timings")
+            start_llm = time.time() if timings is not None else None
             raw_response = self.llm.get_response(prompt)
+            if timings is not None and start_llm is not None:
+                timings.setdefault("assertion", {}).setdefault("llm_time", 0.0)
+                timings["assertion"]["llm_time"] += time.time() - start_llm
 
             try:
                 parsed = parse_raw_response(raw_response)
