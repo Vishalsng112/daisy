@@ -1,6 +1,6 @@
 from __future__ import annotations 
-from utils.assertion_method_classes import FileInfo, assertionGroup, MethodInfo 
-from utils.dafny_read_assertions_xml import extract_assertion
+from src.utils.assertion_method_classes import FileInfo, assertionGroup, MethodInfo 
+from src.utils.dafny_read_assertions_xml import extract_assertion
 import os 
 from pathlib import Path
 

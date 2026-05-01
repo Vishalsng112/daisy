@@ -69,7 +69,7 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY src/requirements.txt ./src/requirements.txt
-COPY src_new ./src_new
+COPY src ./src
 
 RUN python3 -m pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r ./src/requirements.txt \
@@ -104,7 +104,7 @@ RUN cd external/dafny_laurel_repair/laurel/placeholder_finder_better \
 
 RUN useradd --create-home researcher
 RUN mkdir -p /app/temp  /app/images \
-    && chown -R researcher:researcher /app/src /app/src_new /app/dataset /app/results /app/temp
+    && chown -R researcher:researcher /app/src /app/dataset /app/results /app/temp
 
 USER researcher
 ENV HOME=/home/researcher

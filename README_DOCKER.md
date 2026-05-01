@@ -32,13 +32,13 @@ docker build -t dafny_research:latest .
 
 ```sh
 docker run --rm -it -w /app dafny_research:latest \
-  python -m src_new.cli myfile.dfy --model cost_stub_almost_real
+  python -m src.cli myfile.dfy --model cost_stub_almost_real
 ```
 
 With a dataset example:
 ```sh
 docker run --rm -it -w /app dafny_research:latest \
-  python -m src_new.cli \
+  python -m src.cli \
     dataset/extracted/dafny_assertion_dataset/SENG2011_tmp_tmpgk5jq85q_exam_ex4_dfy/method_start_0_as_start_197_end_231/program_without_assertion_group.dfy \
     --model cost_stub_almost_real --localization LLM
 ```
@@ -48,7 +48,7 @@ With a real model (pass API key):
 docker run --rm -it \
   -e OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
   -w /app dafny_research:latest \
-  python -m src_new.cli myfile.dfy --model openrouter-free
+  python -m src.cli myfile.dfy --model openrouter-free
 ```
 
 ## 5. Interactive Container
@@ -62,7 +62,7 @@ docker run --rm -it \
 
 Inside the container, use the CLI directly:
 ```sh
-python -m src_new.cli <file.dfy> --model <model> --localization <strategy>
+python -m src.cli <file.dfy> --model <model> --localization <strategy>
 ```
 
 ## 6. Pass API Keys
@@ -82,7 +82,7 @@ docker run --rm -it \
 ```sh
 docker run --rm -it \
   -p 8888:8888 \
-  -v "$(pwd)/src_new:/app/src_new:delegated" \
+  -v "$(pwd)/src:/app/src:delegated" \
   -v "$(pwd)/results:/app/results:delegated" \
   -v "$(pwd)/dataset:/app/dataset:delegated" \
   -v "$(pwd)/tmp:/app/tmp:delegated" \
@@ -112,15 +112,15 @@ The analysis notebooks are in `src/`:
 
 Inside the container:
 ```sh
-python -m src_new.research_questions.main_rq1
-python -m src_new.research_questions.main_rq2
-python -m src_new.research_questions.main_rq3
+python -m src.research_questions.main_rq1
+python -m src.research_questions.main_rq2
+python -m src.research_questions.main_rq3
 ```
 
 ## 9. Run Tests
 
 ```sh
-python -m pytest src_new/tests/ -q
+python -m pytest src/tests/ -q
 ```
 
 ## Docker Memory Note

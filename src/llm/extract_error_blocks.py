@@ -1,6 +1,7 @@
-
 import re
-def extract_error_blocks(input_string : str):
+
+
+def extract_error_blocks(input_string: str):
     error_pattern = r"^.*Error:.*$"
     warning_pattern = r"^.*Warning:.*$"
 
@@ -17,7 +18,7 @@ def extract_error_blocks(input_string : str):
             if current_block != []:
                 error_blocks.append("\n".join(current_block))
             current_block = []
-        elif current_block!=[]:
+        elif current_block != []:
             current_block.append(line)
 
     if current_block != []:

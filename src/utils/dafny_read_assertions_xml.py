@@ -4,7 +4,7 @@
   # Insert assertions at a given position in another source file
 
 from cairosvg.parser import Element
-from utils.assertion_method_classes import FileInfo, MethodInfo, AssertionInfo, assertionGroup
+from src.utils.assertion_method_classes import FileInfo, MethodInfo, AssertionInfo, assertionGroup
 
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -112,7 +112,7 @@ def replace_assertion_in_method_by(method_file_bytes : bytes, method_info : Meth
 def remove_empty_lines_function(text: str) -> str:
     return "\n".join(line for line in text.split("\n") if line.strip())
     
-from utils.assertion_method_classes import get_method_from_assertion_group
+from src.utils.assertion_method_classes import get_method_from_assertion_group
 def get_file_and_method_without_assertion_group(dafny_file : Path, assertions_group: assertionGroup, remove_empty_lines : bool = False):
         method_info = get_method_from_assertion_group(assertions_group)
         #Pick a method remove all assertions one by one and see if working

@@ -2,28 +2,33 @@ import json
 import re
 from typing import cast
 
-def parse_raw_response(reply : str) -> list[str]:
+def parse_raw_response(reply: str) -> list[str]:
     try:
-        # First try direct JSON parsing
         reply = reply.strip()
-        data = json.loads(reply)
 
-        # Ensure it is a list of strings
-        if isinstance(data, list):
-            return cast(list[str], data)
-        else:
-            raise ValueError("Extracted JSON structure incorrect, did not receive list of strings")
-    except json.JSONDecodeError:
-        # Try to extract a JSON list using regex
+        # First try direct JSON parsing
         try:
-            match = re.search(r"```json(.*?)```", reply, re.DOTALL)
-            if match:
-                json_snippet = match.group(1)
-                assertions = json.loads(json_snippet)
-                if isinstance(assertions, list):
-                    return cast(list[str], assertions)
-                else:
-                    raise ValueError("Extracted JSON structure incorrect, did not receive list of strings")
-        except Exception as e:
-            raise ValueError("Failed to extract valid JSON from text") from e
-    raise ValueError("Completely failed to parse or extract JSON")
+            data = json.loads(reply)
+            if isinstance(data, list):
+                return cast(list[str], data)
+            else:
+                raise ValueError("Expected a list")
+        except json.JSONDecodeError:
+            pass  # fallback
+
+        # Try regex extraction
+        match = re.search(r"```json(.*?)```", reply, re.DOTALL)
+        if match:
+            json_snippet = match.group(1)
+            data = json.loads(json_snippet)
+            if isinstance(data, list):
+                return cast(list[str], data)
+            else:
+                raise ValueError("Extracted JSON is not a list")
+
+        # IMPORTANT: never fall through
+        raise ValueError("No valid JSON found in response")
+
+    except Exception as e:
+        # This preserves the full traceback chain
+        raise ValueError(f"Failed to parse response:\n{reply}") from e

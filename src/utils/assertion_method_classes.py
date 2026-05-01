@@ -128,4 +128,3 @@ class FileInfo:
             method.end_pos, 
             new_text, 
             self.file_bytes)
-

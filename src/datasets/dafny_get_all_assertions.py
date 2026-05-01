@@ -1,77 +1,80 @@
-# Steps 
-import dafny.dafny_runner as dafny_runner
-import utils.global_variables as global_variables
-from utils.run_parallel_or_seq import run_parallel_or_seq
+"""Step 1: Extract assertions from DafnyBench programs via asserttree.
 
+For each .dfy file in the DafnyBench ground_truth folder, runs the custom
+Dafny fork's ``asserttree`` command to extract an XML description of all
+methods and assertions. Saves ``assert.xml`` + ``program.dfy`` per file
+into ``dataset/dafny_assertion_all/``.
+"""
 
-import os 
+from __future__ import annotations
+
+import os
 import re
 from pathlib import Path
 
-def dafny_file_get_all_assertions(dafny_exec : Path, dafny_program : Path, dafny_destination_dataset_path : Path, temp_dir : Path):
-    
-    if not os.path.isfile(dafny_exec):
-        raise FileNotFoundError(f"The file '{dafny_exec}' does not exist.")
+from src.config import (
+    DAFNY_BASE_ASSERTION_DATASET,
+    DAFNY_DATASET,
+    DAFNY_MODIFIED_EXEC_FOR_ASSERTIONS,
+    TEMP_FOLDER,
+)
+from src.utils.dafny_runner import run_dafny_from_text
+from src.utils.parallel_executor import run_parallel_or_seq
 
-    if not os.path.isfile(dafny_program):
-        raise FileNotFoundError(f"The file '{dafny_program}' does not exist.")
-        
-    if not os.path.isabs(dafny_exec) or not os.path.isabs(dafny_program):
-        raise ValueError("All paths must be absolute.")
-    
-    with open(dafny_program, 'r') as dafny_file:
-        dafny_file_text = dafny_file.read()
 
-    program_name: str = dafny_program.name
-    program_converted_name = program_name[:-4]+"_dfy"
+def extract_assertions_from_file(
+    dafny_exec: Path,
+    dafny_program: Path,
+    destination_path: Path,
+    temp_folder: Path,
+) -> None:
+    """Run asserttree on one .dfy file, save assert.xml + program.dfy."""
+    if not dafny_program.is_file():
+        raise FileNotFoundError(f"File not found: {dafny_program}")
 
-    (_, stdout, _) = dafny_runner.run_dafny_from_text(dafny_exec, dafny_file_text, temp_dir, option="asserttree")
-    
-    program_folder = dafny_destination_dataset_path  / program_converted_name
-    os.makedirs(program_folder, exist_ok=True)
+    code = dafny_program.read_text(encoding="utf-8")
+    program_name = dafny_program.stem + "_dfy"
 
-    assert_xml = program_folder / "assert.xml"
+    _, stdout, _ = run_dafny_from_text(dafny_exec, code, temp_folder, option="asserttree")
+
+    program_folder = destination_path / program_name
+    program_folder.mkdir(parents=True, exist_ok=True)
+
+    # Extract <program>...</program> block from asserttree output
     match = re.search(r"<program>(.*?)</program>", stdout, re.DOTALL)
-
-    if match:
-        parsed_output = match.group(0)  # Keep <program> tags
-    else:
-        parsed_output = ""  # If no match, write an empty file
+    parsed_output = match.group(0) if match else ""
+    if not parsed_output:
         print(f"ERROR PROCESSING {dafny_program}")
 
-    with open(assert_xml, "w") as f:
-        f.write(parsed_output)
-
-    program_dfy_path = program_folder / "program.dfy"
-    with open(program_dfy_path, "w") as f:
-       f.write(dafny_file_text)
+    (program_folder / "assert.xml").write_text(parsed_output, encoding="utf-8")
+    (program_folder / "program.dfy").write_text(code, encoding="utf-8")
 
 
-def dafny_get_all_assertions():
-    dataset_path = global_variables.DAFNY_DATASET
-    dafny_exec = global_variables.DAFNY_MODIFIED_EXEC_FOR_ASSERTIONS
-    base_assertion_dataset = global_variables.DAFNY_BASE_ASSERTION_DATASET
-    temp_folder = global_variables.TEMP_FOLDER
+def dafny_get_all_assertions(
+    dataset_path: Path = DAFNY_DATASET,
+    dafny_exec: Path = DAFNY_MODIFIED_EXEC_FOR_ASSERTIONS,
+    destination: Path = DAFNY_BASE_ASSERTION_DATASET,
+    temp_folder: Path = TEMP_FOLDER,
+    parallel: bool = True,
+) -> list:
+    """Extract assertions from all DafnyBench files.
 
+    Args:
+        dataset_path: Path to DafnyBench ground_truth folder.
+        dafny_exec: Path to custom Dafny fork binary.
+        destination: Output path for assertion XMLs.
+        temp_folder: Temp folder for Dafny runs.
+        parallel: Run in parallel.
+    """
     files = [
-        os.path.join(dataset_path, f)
+        Path(os.path.join(dataset_path, f))
         for f in os.listdir(dataset_path)
         if os.path.isfile(os.path.join(dataset_path, f))
     ]
 
-    print("Gathering all assertions from DafnyBench")
+    print(f"Gathering assertions from {len(files)} DafnyBench files")
 
-    def process_file(file_path : Path, dafny_exec : Path, base_assertion_dataset : Path, temp_folder : Path):
-        return dafny_file_get_all_assertions(
-            dafny_exec, file_path, base_assertion_dataset, temp_folder
-        )
+    def process_file(file_path: Path) -> None:
+        extract_assertions_from_file(dafny_exec, file_path, destination, temp_folder)
 
-    return run_parallel_or_seq(
-        files,
-        process_file,
-        "Processing Dafny files",
-        dafny_exec,
-        base_assertion_dataset,
-        temp_folder,
-        parallel=global_variables.GATHERER_DATASET_PARALLEL,
-    )
+    return run_parallel_or_seq(files, process_file, "Extracting assertions", parallel=parallel)
